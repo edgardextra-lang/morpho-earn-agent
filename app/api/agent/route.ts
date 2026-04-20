@@ -80,7 +80,7 @@ Steps:
       betas: ["mcp-client-2025-04-04"],
     });
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("MCP agent timed out after 45s")), 45_000),
+      setTimeout(() => reject(new Error("MCP agent timed out after 180s")), 180_000),
     );
     const response = await Promise.race([mcpCall, timeout]);
 
