@@ -8,7 +8,7 @@ const anthropic = new Anthropic({
 });
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type AgentResult = {
   pickedVault: {
@@ -65,7 +65,7 @@ Steps:
 5. Return: picked vault + rationale + prepared tx. Be concise.`;
 
   try {
-    const response = await anthropic.beta.messages.create({
+    const mcpCall = anthropic.beta.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 4096,
       system: systemPrompt,
@@ -79,6 +79,10 @@ Steps:
       ],
       betas: ["mcp-client-2025-04-04"],
     });
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("MCP agent timed out after 45s")), 45_000),
+    );
+    const response = await Promise.race([mcpCall, timeout]);
 
     // Extract the final text + any tool uses from the response.
     const trace: AgentResult["trace"] = [];
