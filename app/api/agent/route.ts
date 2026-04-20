@@ -89,6 +89,7 @@ Steps:
     let finalText = "";
     let preparedTx: AgentResult["preparedTx"] | undefined;
     let approvalTx: AgentResult["approvalTx"] | undefined;
+    let pickedVaultAddress: string | undefined;
 
     for (const block of response.content) {
       if (block.type === "text") {
@@ -101,8 +102,11 @@ Steps:
         });
         // Capture prepared tx from the tool call input/output if present.
         if (block.name === "morpho_prepare_deposit") {
-          // The tool result comes back as a tool_result block in the next message.
-          // For this simple demo we parse the assistant's final text.
+          const input = block.input as Record<string, unknown> | undefined;
+          const addr = (input?.vault ?? input?.vaultAddress ?? input?.address) as
+            | string
+            | undefined;
+          if (addr) pickedVaultAddress = addr;
         }
       } else if (
         (block as unknown as { type: string }).type === "tool_result" ||
@@ -148,14 +152,46 @@ Steps:
       }
     }
 
-    if (!parsed.pickedVault) {
-      // Fall back to deterministic path rather than return garbage.
+    let pickedVault = parsed.pickedVault;
+    if (!pickedVault && pickedVaultAddress) {
+      const vaults = await getBaseUsdcVaults().catch(() => [] as VaultSummary[]);
+      const match = vaults.find(
+        (v) => v.address.toLowerCase() === pickedVaultAddress!.toLowerCase(),
+      );
+      if (match) {
+        pickedVault = {
+          address: match.address,
+          name: match.name,
+          symbol: match.symbol,
+          apy: match.state.netApy,
+          tvlUsd: match.state.totalAssetsUsd,
+          curators: (match.metadata?.curators || []).map((c) => c.name),
+        };
+      } else {
+        pickedVault = {
+          address: pickedVaultAddress,
+          name: "Unknown vault",
+          symbol: "?",
+          apy: 0,
+          tvlUsd: 0,
+          curators: [],
+        };
+      }
+    }
+
+    if (!pickedVault) {
+      trace.push({
+        role: "system",
+        content: `Final text (${finalText.length} chars): ${finalText.slice(0, 800)}`,
+      });
+      (globalThis as { __lastMcpError?: string }).__lastMcpError =
+        "MCP returned no pickedVault JSON and no morpho_prepare_deposit tool call";
       return null;
     }
 
     return {
-      pickedVault: parsed.pickedVault!,
-      rationale: parsed.rationale || finalText.slice(0, 500),
+      pickedVault,
+      rationale: parsed.rationale || finalText.slice(0, 500) || `Picked ${pickedVault.name} via MCP agent.`,
       preparedTx: preparedTx || parsed.preparedTx,
       approvalTx: approvalTx || parsed.approvalTx,
       warnings: parsed.warnings || [],
