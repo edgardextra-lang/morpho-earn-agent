@@ -98,14 +98,18 @@ You MUST actually invoke the tools — do not answer from prior knowledge. After
       if (block.type === "text") {
         finalText += block.text;
         trace.push({ role: "assistant", content: block.text });
-      } else if (block.type === "tool_use") {
+      } else if (
+        block.type === "tool_use" ||
+        (block as unknown as { type: string }).type === "mcp_tool_use"
+      ) {
+        const tu = block as unknown as { name?: string; input?: Record<string, unknown> };
+        const name = tu.name ?? "(unknown)";
         trace.push({
           role: "tool_use",
-          content: `${block.name}(${JSON.stringify(block.input).slice(0, 300)})`,
+          content: `${name}(${JSON.stringify(tu.input ?? {}).slice(0, 300)})`,
         });
-        // Capture prepared tx from the tool call input/output if present.
-        if (/deposit|invest|earn|supply|prepare/i.test(block.name)) {
-          const input = block.input as Record<string, unknown> | undefined;
+        if (/deposit|invest|earn|supply|prepare/i.test(name)) {
+          const input = tu.input;
           const addr = (input?.vault ??
             input?.vaultAddress ??
             input?.address ??
@@ -117,28 +121,42 @@ You MUST actually invoke the tools — do not answer from prior knowledge. After
         (block as unknown as { type: string }).type === "tool_result" ||
         (block as unknown as { type: string }).type === "mcp_tool_result"
       ) {
-        const content = (block as { content?: unknown }).content;
+        const rawContent = (block as { content?: unknown }).content;
+        let textPayload = "";
+        if (typeof rawContent === "string") {
+          textPayload = rawContent;
+        } else if (Array.isArray(rawContent)) {
+          textPayload = rawContent
+            .map((c) =>
+              typeof c === "string"
+                ? c
+                : (c as { text?: string })?.text ?? JSON.stringify(c),
+            )
+            .join("");
+        } else if (rawContent) {
+          textPayload = JSON.stringify(rawContent);
+        }
         trace.push({
           role: "tool_result",
-          content: JSON.stringify(content).slice(0, 500),
+          content: textPayload.slice(0, 500),
         });
-        // Try to extract a prepared tx from the tool result.
         try {
-          const parsed =
-            typeof content === "string"
-              ? JSON.parse(content)
-              : (content as Record<string, unknown>);
-          const operation = (parsed as Record<string, unknown>).operation as
-            | { transactions?: Array<{ to: string; data: string; value: string }> }
-            | undefined;
-          if (operation?.transactions?.length) {
-            const txs = operation.transactions;
+          const parsed = JSON.parse(textPayload) as Record<string, unknown>;
+          const txs =
+            (parsed.transactions as Array<{ to: string; data: string; value: string }> | undefined) ??
+            ((parsed.operation as { transactions?: Array<{ to: string; data: string; value: string }> } | undefined)
+              ?.transactions);
+          if (txs?.length) {
             if (txs.length >= 2) {
               approvalTx = txs[0];
               preparedTx = txs[1];
             } else {
               preparedTx = txs[0];
             }
+          }
+          const vaultAddr = parsed.vault ?? parsed.address;
+          if (typeof vaultAddr === "string" && /^0x[0-9a-fA-F]{40}$/.test(vaultAddr)) {
+            pickedVaultAddress = vaultAddr;
           }
         } catch {
           // ignore parse errors
