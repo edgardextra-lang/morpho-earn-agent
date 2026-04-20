@@ -65,12 +65,11 @@ Steps:
 5. Return: picked vault + rationale + prepared tx. Be concise.`;
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await anthropic.beta.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
-      // @ts-expect-error Anthropic SDK typing for mcp_servers may lag behind API
       mcp_servers: [
         {
           type: "url",
@@ -78,6 +77,7 @@ Steps:
           name: "morpho",
         },
       ],
+      betas: ["mcp-client-2025-04-04"],
     });
 
     // Extract the final text + any tool uses from the response.
