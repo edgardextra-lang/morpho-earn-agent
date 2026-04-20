@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #0B0D10;
+  color: #E5E7EB;
+  min-height: 100vh;
+}
+
+@layer components {
+  .panel {
+    @apply bg-morpho-panel border border-morpho-border rounded-xl p-6;
+  }
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+  .btn-primary {
+    @apply btn bg-morpho-accent text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply btn border border-morpho-border hover:bg-morpho-panel;
+  }
+  .mono {
+    @apply font-mono text-sm;
+  }
+}
