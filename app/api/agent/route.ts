@@ -101,7 +101,7 @@ Steps:
           // For this simple demo we parse the assistant's final text.
         }
       } else if (
-        block.type === "tool_result" ||
+        (block as unknown as { type: string }).type === "tool_result" ||
         (block as unknown as { type: string }).type === "mcp_tool_result"
       ) {
         const content = (block as { content?: unknown }).content;
@@ -254,10 +254,16 @@ async function runDeterministicFallback(params: {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as {
-      prompt: string;
+    const raw = (await req.json()) as {
+      prompt?: string;
+      userPrompt?: string;
       walletAddress: string;
       amountUsdc: number;
+    };
+    const body = {
+      userPrompt: raw.userPrompt ?? raw.prompt ?? "",
+      walletAddress: raw.walletAddress,
+      amountUsdc: raw.amountUsdc,
     };
 
     if (!body.walletAddress || !body.amountUsdc) {
