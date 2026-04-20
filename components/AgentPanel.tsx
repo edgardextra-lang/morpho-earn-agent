@@ -1,8 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
-import { parseUnits } from "viem";
+import {
+  useAccount,
+  useChainId,
+  useSendTransaction,
+  useSwitchChain,
+  useWaitForTransactionReceipt,
+} from "wagmi";
+import { base } from "wagmi/chains";
 
 type AgentResult = {
   pickedVault: {
@@ -31,7 +37,14 @@ export function AgentPanel() {
   const [result, setResult] = useState<AgentResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: txHash, sendTransaction, isPending: sending } = useSendTransaction();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  const {
+    data: txHash,
+    sendTransaction,
+    isPending: sending,
+    error: sendError,
+  } = useSendTransaction();
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({
     hash: txHash,
   });
@@ -61,22 +74,40 @@ export function AgentPanel() {
     }
   }
 
-  function signApproval() {
-    if (!result?.approvalTx) return;
-    sendTransaction({
-      to: result.approvalTx.to as `0x${string}`,
-      data: result.approvalTx.data as `0x${string}`,
-      value: BigInt(result.approvalTx.value || "0"),
-    });
+  async function ensureBase() {
+    if (chainId !== base.id) {
+      await switchChainAsync({ chainId: base.id });
+    }
   }
 
-  function signDeposit() {
+  async function signApproval() {
+    if (!result?.approvalTx) return;
+    try {
+      await ensureBase();
+      sendTransaction({
+        chainId: base.id,
+        to: result.approvalTx.to as `0x${string}`,
+        data: result.approvalTx.data as `0x${string}`,
+        value: BigInt(result.approvalTx.value || "0"),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to switch chain");
+    }
+  }
+
+  async function signDeposit() {
     if (!result?.preparedTx) return;
-    sendTransaction({
-      to: result.preparedTx.to as `0x${string}`,
-      data: result.preparedTx.data as `0x${string}`,
-      value: BigInt(result.preparedTx.value || "0"),
-    });
+    try {
+      await ensureBase();
+      sendTransaction({
+        chainId: base.id,
+        to: result.preparedTx.to as `0x${string}`,
+        data: result.preparedTx.data as `0x${string}`,
+        value: BigInt(result.preparedTx.value || "0"),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to switch chain");
+    }
   }
 
   return (
@@ -111,9 +142,9 @@ export function AgentPanel() {
         </div>
       </div>
 
-      {error && (
-        <div className="border border-morpho-danger/40 bg-morpho-danger/10 text-morpho-danger p-3 rounded-lg mono">
-          {error}
+      {(error || sendError) && (
+        <div className="border border-morpho-danger/40 bg-morpho-danger/10 text-morpho-danger p-3 rounded-lg mono text-xs">
+          {error || sendError?.message}
         </div>
       )}
 
