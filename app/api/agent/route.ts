@@ -159,7 +159,9 @@ Steps:
       mode: "mcp-agent",
     };
   } catch (err) {
-    console.error("MCP agent path failed:", err);
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("MCP agent path failed:", msg);
+    (globalThis as { __lastMcpError?: string }).__lastMcpError = msg;
     return null;
   }
 }
@@ -246,6 +248,10 @@ async function runDeterministicFallback(params: {
       {
         role: "system",
         content: `Fell back to deterministic path. Filtered ${vaults.length} vaults → ${candidates.length} safe → picked top-ranked.`,
+      },
+      {
+        role: "system",
+        content: `MCP error: ${(globalThis as { __lastMcpError?: string }).__lastMcpError ?? "no error captured (path returned null without throwing — likely missing pickedVault JSON)"}`,
       },
     ],
     mode: "deterministic-fallback",
