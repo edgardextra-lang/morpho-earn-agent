@@ -47,22 +47,25 @@ async function runMcpAgent(params: {
 }): Promise<AgentResult | null> {
   const { userPrompt, walletAddress, amountUsdc } = params;
 
-  const systemPrompt = `You are a Morpho deposit agent. You have access to tools on Morpho's MCP server.
+  const systemPrompt = `You are a Morpho deposit agent with access to Morpho's MCP server tools.
 
-Task: pick the safest USDC vault on Base for a deposit of ${amountUsdc} USDC by address ${walletAddress}, and prepare the deposit transaction.
+Task: deposit ${amountUsdc} USDC into the safest Morpho vault on Base (chain id 8453) for user ${walletAddress}.
 
-Safety criteria, in priority order:
-1. TVL > $5M (skip vaults smaller than this)
-2. Curator is verified and reputable (Gauntlet, Steakhouse, MEV Capital, Block Analitica, Re7 — prefer these)
-3. Allocation is diversified (not 100% to a single market)
-4. Net APY is reasonable (skip vaults with APY > 3x the median — likely incentive-heavy)
-
-Steps:
-1. Call morpho_query_vaults with chain=base, asset=USDC, sort by TVL desc, first 10.
-2. Filter by safety criteria.
+Discover the available MCP tools first. Use whichever tools the server exposes to:
+1. List USDC vaults on Base (sort by TVL desc).
+2. Filter for safety: TVL > $5M, reputable curator (Gauntlet, Steakhouse, MEV Capital, Block Analitica, Re7), diversified allocation, APY not an outlier (≤ 3× median).
 3. Pick the top remaining vault.
-4. Call morpho_prepare_deposit with the picked vault address, amount=${amountUsdc} USDC, user=${walletAddress}.
-5. Return: picked vault + rationale + prepared tx. Be concise.`;
+4. Call whatever deposit/transaction-building tool the MCP exposes to produce an unsigned ERC-20 approval + ERC-4626 deposit transaction array for the picked vault, amount ${amountUsdc} USDC, sender ${walletAddress}.
+
+You MUST actually invoke the tools — do not answer from prior knowledge. After tool calls, return your final answer as a json code block with this exact shape:
+
+\`\`\`json
+{
+  "pickedVault": { "address": "0x...", "name": "...", "symbol": "...", "apy": 0.05, "tvlUsd": 100000000, "curators": ["..."] },
+  "rationale": "one paragraph",
+  "warnings": []
+}
+\`\`\``;
 
   try {
     const mcpCall = anthropic.beta.messages.create({
@@ -101,12 +104,14 @@ Steps:
           content: `${block.name}(${JSON.stringify(block.input).slice(0, 300)})`,
         });
         // Capture prepared tx from the tool call input/output if present.
-        if (block.name === "morpho_prepare_deposit") {
+        if (/deposit|invest|earn|supply|prepare/i.test(block.name)) {
           const input = block.input as Record<string, unknown> | undefined;
-          const addr = (input?.vault ?? input?.vaultAddress ?? input?.address) as
-            | string
-            | undefined;
-          if (addr) pickedVaultAddress = addr;
+          const addr = (input?.vault ??
+            input?.vaultAddress ??
+            input?.address ??
+            input?.market ??
+            input?.target) as string | undefined;
+          if (addr && /^0x[0-9a-fA-F]{40}$/.test(addr)) pickedVaultAddress = addr;
         }
       } else if (
         (block as unknown as { type: string }).type === "tool_result" ||
@@ -180,12 +185,17 @@ Steps:
     }
 
     if (!pickedVault) {
+      const toolUses = trace.filter((t) => t.role === "tool_use").map((t) => t.content);
+      trace.push({
+        role: "system",
+        content: `Tool calls made (${toolUses.length}): ${toolUses.join(" | ").slice(0, 600) || "none"}`,
+      });
       trace.push({
         role: "system",
         content: `Final text (${finalText.length} chars): ${finalText.slice(0, 800)}`,
       });
       (globalThis as { __lastMcpError?: string }).__lastMcpError =
-        "MCP returned no pickedVault JSON and no morpho_prepare_deposit tool call";
+        "MCP returned no pickedVault JSON and no recognizable deposit-prep tool call";
       return null;
     }
 
