@@ -32,7 +32,7 @@ export default function Home() {
           github
         </a>{" "}
         · Read the{" "}
-        <a className="underline hover:text-morpho-text" href="/morpho_devx_memo.md" target="_blank" rel="noreferrer">
+        <a className="underline hover:text-morpho-text" href="https://docs.google.com/document/d/1nuhqukwj8vxkAi4iEUcAxo8rFPSQ7Vztj88Rb-XkrTQ/edit?usp=sharing" target="_blank" rel="noreferrer">
           DevX observations
         </a>{" "}
         from building this.
