@@ -25,7 +25,7 @@ export default function Home() {
         Source:{" "}
         <a
           className="underline hover:text-morpho-text"
-          href="https://github.com/"
+          href="https://github.com/edgardextra-lang/morpho-earn-agent"
           target="_blank"
           rel="noreferrer"
         >
